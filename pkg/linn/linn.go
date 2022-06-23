@@ -12,62 +12,95 @@ import (
 	"time"
 )
 
-type AuthData struct {
+type authData struct {
 	Server string
 	Token  string
 }
 
-var AuthProperties AuthData
+var serverAuthData authData
 
-func Init(config core.Config, channel chan bool) {
-
-	err := Auth(config)
-	fmt.Println("Linn Auth!")
-	if err != nil {
-		log.Fatalf("Linn Auth Init Error: %s", err.Error())
-	}
-	channel <- true
-
-	for range time.Tick(time.Second * 20) {
-		err := Auth(config)
-		fmt.Println("Linn Auth!")
-		if err != nil {
-			log.Fatalf("Linn Auth Init Error: %s", err.Error())
-		}
-	}
+//InitResult : struct for Init functions channel
+type InitResult struct {
+	authData authData
+    //Publicly accessable error for logging
+	Err      error
 }
 
-func Auth(config core.Config) error {
+//Init function called from main to auth with Linnworks and keep connection alive.
+func Init(config core.Config, channel chan InitResult) {
 
-	jsonEncoding, err := json.Marshal(config)
+	var authChannel = make(chan error)
+	go auth(config, authChannel)
+	err := <-authChannel
 	if err != nil {
-		return err
+		channel <- InitResult{serverAuthData, err}
+	}
+
+	channel <- InitResult{serverAuthData, nil}
+
+	go scheduleReAuth(config)
+}
+
+func auth(config core.Config, channel chan error) {
+
+	jsonEncoding, err := json.Marshal(config.Linn)
+	if err != nil {
+		channel <- err
 	}
 
 	body := bytes.NewBuffer([]byte("request=" + string(jsonEncoding)))
 
-	res, err := http.Post("https://api.linnworks.net/api/AuthProperties/AuthorizeByApplication", "application/json", body)
-	if err != nil {
-		return err
+	client := &http.Client{
+		Timeout: time.Second * 10,
 	}
 
-	buffer := new(bytes.Buffer)
-	_, err = buffer.ReadFrom(res.Body)
+	req, err := http.NewRequest("POST", "https://api.linnworks.net/api/Auth/AuthorizeByApplication", body)
 	if err != nil {
-		return err
+		channel <- err
 	}
 
-	_ = json.Unmarshal(buffer.Bytes(), &AuthProperties)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	req.Header.Set("Accept", "application/json")
 
-	return nil
+	res, err := client.Do(req)
+	if err != nil {
+		channel <- err
+	}
+
+	defer res.Body.Close()
+
+	resBody, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		channel <- err
+	}
+
+	_ = json.Unmarshal(resBody, &serverAuthData)
+
+	channel <- nil
 }
 
+func scheduleReAuth(config core.Config) {
+	duration := time.Duration(time.Second * 20)
+	var wrap func()
+	wrap = func() {
+		fmt.Println("Auth wrap!")
+		var newAuthChannel = make(chan error)
+		go auth(config, newAuthChannel)
+		err := <-newAuthChannel
+		if err != nil {
+			log.Fatalf("Linn Init Auth Error: %s", err.Error())
+		}
+		time.AfterFunc(duration, wrap)
+
+	}
+	wrap()
+}
+
+//PostReq is a public function for making API post request to Linnworks servers.
+//Uses private stored authData for authentication
 func PostReq(url string, bodyData string) (string, error) {
 
-	if AuthProperties.Server != "" {
-		url = AuthProperties.Server + url
-		fmt.Println(url)
-	}
+	fmt.Println(serverAuthData)
 
 	body := bytes.NewBuffer([]byte(bodyData))
 
@@ -75,17 +108,15 @@ func PostReq(url string, bodyData string) (string, error) {
 		Timeout: time.Second * 10,
 	}
 
-	req, err := http.NewRequest("POST", url, body)
+	req, err := http.NewRequest("POST", serverAuthData.Server+url, body)
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 	req.Header.Set("Accept", "application/json")
-	if AuthProperties.Token != "" {
-		fmt.Println(AuthProperties.Token)
-		req.Header.Set("Authorization", AuthProperties.Token)
-	}
+	req.Header.Set("Authorization", serverAuthData.Token)
+
 	res, err := client.Do(req)
 	if res.StatusCode == http.StatusOK {
 		if err != nil {
@@ -100,7 +131,8 @@ func PostReq(url string, bodyData string) (string, error) {
 		}
 
 		return string(resBody), nil
-	} else {
-		return "", errors.New(res.Status)
 	}
+        
+	return "", errors.New(res.Status)
+
 }

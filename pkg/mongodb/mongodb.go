@@ -2,7 +2,6 @@ package mongodb
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -13,7 +12,7 @@ import (
 )
 
 func dbConnection(config core.Config, channel chan string) {
-	var client, err = mongo.NewClient(options.Client().ApplyURI("mongodb://" + config.DbAddress + ":" + config.DbPort + "/"))
+	var client, err = mongo.NewClient(options.Client().ApplyURI("mongodb://" + config.Db.DbAddress + ":" + config.Db.DbPort + "/"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,8 +32,7 @@ func dbConnection(config core.Config, channel chan string) {
 	var result bson.M
 	cursor, err := coll.Find(context.TODO(), bson.D{})
 	if err != nil {
-		fmt.Errorf("MongoDB error", err.Error())
 	}
 	cursor.Decode(&result)
-	channel <- result
+	channel <- ""
 }

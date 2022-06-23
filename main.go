@@ -15,10 +15,14 @@ func main() {
 		fmt.Println(err)
 	}
 
+    fmt.Println(config)
 	fmt.Println("Server Started!")
-	done := make(chan bool)
+    done := make(chan linn.InitResult)
 	go linn.Init(config, done)
-	<-done
+    result := <-done
+    if result.Err != nil {
+        log.Fatalf("Linn Init Error: %s", result.Err.Error())
+    }
 
 	http.HandleFunc("/Linn/", linnroutes.Handler)
 	err = http.ListenAndServe(":8080", nil)
