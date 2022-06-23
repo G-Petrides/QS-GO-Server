@@ -1,0 +1,3 @@
+init mod package - go mod init go-server.com/[package name]
+import secondary modules - go mod tidy
+remap module to local directory - go mod edit -replace go-server.com/[package name]=../[package name]

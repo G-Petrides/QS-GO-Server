@@ -1,0 +1,11 @@
+{
+    "linn":{  
+        "applicationId":"5e98796e-63fb-4188-a73b-0b05456f081e",
+        "applicationSecret": "ad4c386b-d125-4961-9f3c-36340dd33753",
+        "token": "14744072963ee9ace93725ca8a8c70b2"
+    },
+    "db":{
+        "dbAddress": "127.0.0.1",
+        "dbPort": "27017"
+    }
+}
